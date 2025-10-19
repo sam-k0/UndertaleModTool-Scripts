@@ -169,6 +169,7 @@ void DumpSprite(UndertaleSprite sprite)
                 }
             }
 
+            //TODO: Combine these into one png file
             for (int i = 0; i < sprite.Textures.Count; i++)
             {
                 if (sprite.Textures[i]?.Texture is not null)
