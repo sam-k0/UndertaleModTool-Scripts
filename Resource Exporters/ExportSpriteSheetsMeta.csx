@@ -16,6 +16,8 @@ using UndertaleModLib.Util;
 
 using System.Windows.Forms;
 using System.Drawing;
+using System.Drawing.Imaging;
+using System.Collections.Generic;
 
 
 EnsureDataLoaded();
@@ -170,11 +172,104 @@ void DumpSprite(UndertaleSprite sprite)
             }
 
             //TODO: Combine these into one png file
-            for (int i = 0; i < sprite.Textures.Count; i++)
+            /*for (int i = 0; i < sprite.Textures.Count; i++)
             {
                 if (sprite.Textures[i]?.Texture is not null)
                 {
                     worker.ExportAsPNG(sprite.Textures[i].Texture, Path.Combine(outputFolder, $"{sprite.Name.Content}_{i}.png"), null, padded);
+                }
+            }*/
+
+            // Export each texture to a temporary PNG, load into Bitmaps and compose the sheet
+            List<string> tempFiles = new List<string>();
+            List<Bitmap> images = new List<Bitmap>();
+
+            try
+            {
+                for (int i = 0; i < sprite.Textures.Count; i++)
+                {
+                    var tex = sprite.Textures[i]?.Texture;
+                    if (tex is null) continue;
+
+                    // Create a temp file for this texture
+                    string temp = Path.Combine(Path.GetTempPath(), $"umt_sprite_tmp_{Guid.NewGuid()}.png");
+                    tempFiles.Add(temp);
+
+                    // Use the existing worker to export the texture to PNG
+                    try
+                    {
+                        worker.ExportAsPNG(tex, temp, null, padded);
+                        images.Add(new Bitmap(temp));
+                    }
+                    catch (Exception)
+                    {
+                        // If export fails, skip this texture but continue with others
+                        // Optionally you can log the error to the UI; for now we ignore
+                        if (File.Exists(temp))
+                            File.Delete(temp);
+                    }
+                }
+
+                if (images.Count == 0)
+                {
+                    // Nothing to compose
+                }
+                else
+                {
+                    // ==== Layout config ====
+                    int columns = images.Count;  // one row (change to grid if you want)
+                    int rows = 1;
+                    int maxWidth = 0;
+                    int maxHeight = 0;
+
+                    foreach (var img in images)
+                    {
+                        maxWidth = Math.Max(maxWidth, img.Width);
+                        maxHeight = Math.Max(maxHeight, img.Height);
+                    }
+
+                    int sheetWidth = maxWidth * columns;
+                    int sheetHeight = maxHeight * rows;
+
+                    // Final output path for the spritesheet
+                    string outputFile = Path.Combine(outputFolder, $"{sprite.Name.Content}.png");
+
+                    using (Bitmap sheet = new Bitmap(sheetWidth, sheetHeight))
+                    using (Graphics g = Graphics.FromImage(sheet))
+                    {
+                        g.Clear(Color.Transparent);
+
+                        int x = 0, y = 0;
+                        int col = 0;
+                        foreach (var img in images)
+                        {
+                            g.DrawImage(img, x, y, img.Width, img.Height);
+                            col++;
+                            x += maxWidth;
+                            if (col >= columns)
+                            {
+                                col = 0;
+                                x = 0;
+                                y += maxHeight;
+                            }
+                            img.Dispose();
+                        }
+
+                        // Ensure output folder exists
+                        var outDir = Path.GetDirectoryName(outputFile);
+                        if (!string.IsNullOrEmpty(outDir) && !Directory.Exists(outDir))
+                            Directory.CreateDirectory(outDir);
+
+                        sheet.Save(outputFile, ImageFormat.Png);
+                    }
+                }
+            }
+            finally
+            {
+                // Clean up temporary files
+                foreach (var t in tempFiles)
+                {
+                    try { if (File.Exists(t)) File.Delete(t); } catch { }
                 }
             }
 
